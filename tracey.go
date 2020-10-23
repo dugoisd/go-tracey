@@ -3,8 +3,6 @@ package tracey
 
 import (
 	"fmt"
-	"log"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,7 +10,13 @@ import (
 
 	"reflect"
 	"runtime"
+
+	"github.com/jcelliott/lumber"
 )
+
+type Logger interface {
+	Trace(string, ...interface{})
+}
 
 // Define a global regex for extracting function names
 var RE_stripFnPreamble = regexp.MustCompile(`^.*\.(.*)$`)
@@ -31,7 +35,7 @@ type Options struct {
 	// Setting the "CustomLogger" to nil will cause tracey to log to
 	// os.Stdout. Otherwise, this is a pointer to an object as returned
 	// from `log.New(...)`.
-	CustomLogger *log.Logger
+	CustomLogger Logger
 
 	// Setting "DisableDepthValue" to "true" will cause tracey to not
 	// prepend the printed function's depth to enter() and exit() messages.
@@ -75,7 +79,7 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 
 	// Revert to stdout if no logger is defined
 	if options.CustomLogger == nil {
-		options.CustomLogger = log.New(os.Stdout, "", 0)
+		options.CustomLogger = lumber.NewConsoleLogger(lumber.TRACE)
 	}
 
 	// Use reflect to deduce "default" values for the
@@ -158,7 +162,7 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 		// "$FN" will be replaced by the name of the function (if present)
 		traceMessage = RE_detectFN.ReplaceAllString(traceMessage, fnName)
 
-		options.CustomLogger.Printf("%s%s%s\n", _spacify(), options.EnterMessage, traceMessage)
+		options.CustomLogger.Trace("%s%s%s\n", _spacify(), options.EnterMessage, traceMessage)
 		return Info{Start: stTimeStamp, Msg: traceMessage}
 	}
 
@@ -166,10 +170,10 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 	_exit := func(m Info) {
 		_decrementDepth()
 		if m.Start.IsZero() {
-			options.CustomLogger.Printf("%s%s%s\n", _spacify(), options.ExitMessage, m.Msg)
+			options.CustomLogger.Trace("%s%s%s\n", _spacify(), options.ExitMessage, m.Msg)
 		} else {
 			elapsed := time.Since(m.Start)
-			options.CustomLogger.Printf("%s%s%s%s%s\n", _spacify(), options.ExitMessage, m.Msg, options.ElapsedMessage, elapsed)
+			options.CustomLogger.Trace("%s%s%s%s%s\n", _spacify(), options.ExitMessage, m.Msg, options.ElapsedMessage, elapsed)
 		}
 	}
 
