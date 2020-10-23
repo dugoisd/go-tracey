@@ -3,9 +3,11 @@ package tracey
 import (
 	"bytes"
 	"log"
+	"time"
+
+	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // Define a custom logger which is just a string buffer
@@ -168,7 +170,7 @@ func TestUnspecifiedFunctionName(test *testing.T) {
 func TestMoreExitsThanEntersMustPanic(test *testing.T) {
 	G, _ := New(&Options{CustomLogger: BufLogger})
 	assert.Panics(test, func() {
-		G("")
+		G(Info{})
 	}, "Calling exit without enter should panic")
 }
 
@@ -196,7 +198,7 @@ func ExampleNew_customMessage() {
 	G, O := New(&Options{EnterMessage: "en - ", ExitMessage: "ex - "})
 
 	second := func() {
-		defer G(O("SECOND"))
+		defer G(O("SECOND", time.Now()))
 	}
 	first := func() {
 		defer G(O("FIRST"))
