@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"reflect"
 	"runtime"
@@ -46,17 +47,22 @@ type Options struct {
 
 	// Setting "EnterMessage" or "ExitMessage" will override the default
 	// value of "Enter: " and "EXIT:  " respectively.
-	EnterMessage string `default:"ENTER: "`
-	ExitMessage  string `default:"EXIT:  "`
-
+	EnterMessage   string `default:"ENTER: "`
+	ExitMessage    string `default:"EXIT:  "`
+	ElapsedMessage string `default:",took:  "`
 	// Private member, used to keep track of how many levels of nesting
 	// the current trace functions have navigated.
 	currentDepth int
 }
 
+type Info struct {
+	Start time.Time
+	Msg   string
+}
+
 // Main entry-point for the tracey lib. Calling New with nil will
 // result in the default options being used.
-func New(opts *Options) (func(string), func(...interface{}) string) {
+func New(opts *Options) (func(Info), func(...interface{}) Info) {
 	var options Options
 	if opts != nil {
 		options = *opts
@@ -64,7 +70,7 @@ func New(opts *Options) (func(string), func(...interface{}) string) {
 
 	// If tracing is not enabled, just return no-op functions
 	if options.DisableTracing {
-		return func(string) {}, func(...interface{}) string { return "" }
+		return func(Info) {}, func(...interface{}) Info { return Info{} }
 	}
 
 	// Revert to stdout if no logger is defined
@@ -82,6 +88,10 @@ func New(opts *Options) (func(string), func(...interface{}) string) {
 	if options.ExitMessage == "" {
 		field, _ := reflectedType.FieldByName("ExitMessage")
 		options.ExitMessage = field.Tag.Get("default")
+	}
+	if options.ElapsedMessage == "" {
+		field, _ := reflectedType.FieldByName("ElapsedMessage")
+		options.ElapsedMessage = field.Tag.Get("default")
 	}
 
 	// If nesting is enabled, and the spaces are not specified,
@@ -119,9 +129,9 @@ func New(opts *Options) (func(string), func(...interface{}) string) {
 	}
 
 	// Enter function, invoked on function entry
-	_enter := func(args ...interface{}) string {
+	_enter := func(args ...interface{}) Info {
 		defer _incrementDepth()
-
+		var stTimeStamp time.Time
 		// Figure out the name of the caller and use that
 		fnName := "<unknown>"
 		pc, _, _, ok := runtime.Caller(1)
@@ -132,8 +142,14 @@ func New(opts *Options) (func(string), func(...interface{}) string) {
 		traceMessage := fnName
 		if len(args) > 0 {
 			if fmtStr, ok := args[0].(string); ok {
-				// We have a string leading args, assume its to be formatted
-				traceMessage = fmt.Sprintf(fmtStr, args[1:]...)
+				for _, arg := range args[1:] {
+					if start, valid := arg.(time.Time); valid {
+						stTimeStamp = start
+						continue
+					}
+					// We have a string leading args, assume its to be formatted
+					traceMessage = fmt.Sprintf(fmtStr, arg)
+				}
 			}
 		}
 
@@ -141,13 +157,18 @@ func New(opts *Options) (func(string), func(...interface{}) string) {
 		traceMessage = RE_detectFN.ReplaceAllString(traceMessage, fnName)
 
 		options.CustomLogger.Printf("%s%s%s\n", _spacify(), options.EnterMessage, traceMessage)
-		return traceMessage
+		return Info{Start: stTimeStamp, Msg: traceMessage}
 	}
 
 	// Exit function, invoked on function exit (usually deferred)
-	_exit := func(s string) {
+	_exit := func(m Info) {
 		_decrementDepth()
-		options.CustomLogger.Printf("%s%s%s\n", _spacify(), options.ExitMessage, s)
+		if m.Start.IsZero() {
+			options.CustomLogger.Printf("%s%s%s\n", _spacify(), options.ExitMessage, m.Msg)
+		} else {
+			elapsed := time.Since(m.Start)
+			options.CustomLogger.Printf("%s%s%s%s%s\n", _spacify(), options.ExitMessage, m.Msg, options.ElapsedMessage, elapsed)
+		}
 	}
 
 	return _exit, _enter
