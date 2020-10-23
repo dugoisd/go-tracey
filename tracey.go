@@ -49,7 +49,7 @@ type Options struct {
 	// value of "Enter: " and "EXIT:  " respectively.
 	EnterMessage   string `default:"ENTER: "`
 	ExitMessage    string `default:"EXIT:  "`
-	ElapsedMessage string `default:",took:  "`
+	ElapsedMessage string `default:", took:  "`
 	// Private member, used to keep track of how many levels of nesting
 	// the current trace functions have navigated.
 	currentDepth int
@@ -142,14 +142,16 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 		traceMessage := fnName
 		if len(args) > 0 {
 			if fmtStr, ok := args[0].(string); ok {
-				for _, arg := range args[1:] {
+				for p, arg := range args[1:] {
 					if start, valid := arg.(time.Time); valid {
 						stTimeStamp = start
+						args = remove(args, p)
 						continue
 					}
-					// We have a string leading args, assume its to be formatted
-					traceMessage = fmt.Sprintf(fmtStr, arg)
 				}
+				// We have a string leading args, assume its to be formatted
+				traceMessage = fmt.Sprintf(fmtStr, args[1:]...)
+
 			}
 		}
 
@@ -172,4 +174,7 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 	}
 
 	return _exit, _enter
+}
+func remove(slice []interface{}, s int) []interface{} {
+	return append(slice[:s], slice[s+1:]...)
 }
