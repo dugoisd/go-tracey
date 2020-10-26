@@ -49,11 +49,16 @@ type Options struct {
 	DisableNesting  bool
 	SpacesPerIndent int `default:"2"`
 
+	// Setting "DisplayParentsCaller" to "true" will cause tracey to display
+	// full caller tree for a function
+	DisplayParentsCaller bool
+
 	// Setting "EnterMessage" or "ExitMessage" will override the default
 	// value of "Enter: " and "EXIT:  " respectively.
 	EnterMessage   string `default:"ENTER: "`
 	ExitMessage    string `default:"EXIT:  "`
 	ElapsedMessage string `default:", took:  "`
+
 	// Private member, used to keep track of how many levels of nesting
 	// the current trace functions have navigated.
 	currentDepth int
@@ -144,18 +149,24 @@ func New(opts *Options) (func(Info), func(...interface{}) Info) {
 		}
 
 		traceMessage := fnName
-		if len(args) > 0 {
-			if fmtStr, ok := args[0].(string); ok {
-				for p, arg := range args[1:] {
-					if start, valid := arg.(time.Time); valid {
-						stTimeStamp = start
-						args = remove(args, p)
-						continue
-					}
-				}
-				// We have a string leading args, assume its to be formatted
-				traceMessage = fmt.Sprintf(fmtStr, args[1:]...)
+		if options.DisplayParentsCaller {
+			pc, _, _, ok := runtime.Caller(2)
+			if ok {
+				traceMessage += " called by "
+				traceMessage += RE_stripFnPreamble.ReplaceAllString(runtime.FuncForPC(pc).Name(), "$1")
+			}
 
+		}
+		reStr := ""
+		if len(args) > 0 {
+			for _, arg := range args {
+				if start, ok := arg.(time.Time); ok {
+					stTimeStamp = start
+					continue
+				}
+				if fmtStr, ok := arg.(string); ok {
+					reStr += fmtStr
+				}
 			}
 		}
 
